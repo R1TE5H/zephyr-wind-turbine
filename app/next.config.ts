@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ["serialport", "@serialport/bindings-cpp"],
+  turbopack: {},
 };
 
 export default nextConfig;
