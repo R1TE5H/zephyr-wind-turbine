@@ -1,0 +1,33 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "Mac",
+      "intelliSenseMode": "gcc-arm",
+      "compilerPath": "${env:HOME}/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin/avr-gcc",
+      "includePath": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/robot",
+        "${env:HOME}/Library/Arduino15/packages/arduino/hardware/avr/1.8.7/cores/arduino",
+        "${env:HOME}/Library/Arduino15/packages/arduino/hardware/avr/1.8.7/variants/standard",
+        "${env:HOME}/Library/Arduino15/packages/arduino/hardware/avr/1.8.7/libraries/Wire/src",
+        "${env:HOME}/Library/Arduino15/packages/arduino/hardware/avr/1.8.7/libraries/SPI/src",
+        "${env:HOME}/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/avr/include",
+        "${env:HOME}/Documents/Arduino/libraries/Adafruit_GFX_Library",
+        "${env:HOME}/Documents/Arduino/libraries/Adafruit_SSD1306",
+        "${env:HOME}/Documents/Arduino/libraries/Adafruit_BusIO",
+        "${env:HOME}/Documents/Arduino/libraries/Adafruit_HX711",
+        "${env:HOME}/Documents/Arduino/libraries/Adafruit_INA260_Library",
+        "${env:HOME}/Documents/Arduino/libraries/Adafruit_NeoPixel"
+      ],
+      "defines": [
+        "ARDUINO=10819",
+        "ARDUINO_ARCH_AVR",
+        "F_CPU=16000000L",
+        "__AVR_ATmega328P__"
+      ],
+      "cStandard": "c11",
+      "cppStandard": "c++11"
+    }
+  ]
+}
