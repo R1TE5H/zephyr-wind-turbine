@@ -11,6 +11,8 @@ pip install -U platformio
 # 2. Setup robot firmware
 cd robot
 pio run --target upload    # Builds, installs dependencies, and uploads to Arduino
+# If `pio` is not found, use the workspace venv command:
+/Users/riteshpersaud/Desktop/sd/.venv/bin/pio run -t upload
 
 # 3. Setup web dashboard
 cd ../app
@@ -64,6 +66,9 @@ pip install -U platformio
 
 # One command to install dependencies, build, and upload
 pio run --target upload
+
+# If `pio` is not found in your shell PATH
+/Users/riteshpersaud/Desktop/sd/.venv/bin/pio run -t upload
 
 # Open serial monitor to verify (Ctrl+C to exit)
 pio device monitor
@@ -153,20 +158,20 @@ The Arduino sends JSON data every second:
 
 ### Pin Assignments
 
-| Component | Pin | Description |
-|-----------|-----|-------------|
-| Hall Sensor | D3 | Digital input for RPM measurement |
-| Hall LED | D7 | Status indicator for hall effect |
-| Wind Sensor Output | A2 | Analog wind speed reading |
-| Temperature Sensor | A3 | Analog temperature reading |
-| Wind Low LED | D6 | Wind speed warning indicator |
-| Temp Low LED | D5 | Temperature warning indicator |
-| HX711 Data | A0 | Load cell data line |
-| HX711 Clock | A1 | Load cell clock line |
-| I2C Display (SDA) | A4 | OLED display data |
-| I2C Display (SCL) | A5 | OLED display clock |
-| INA260 (SDA) | A4 | Power monitor data (shared I2C) |
-| INA260 (SCL) | A5 | Power monitor clock (shared I2C) |
+| Component          | Pin | Description                       |
+| ------------------ | --- | --------------------------------- |
+| Hall Sensor        | D3  | Digital input for RPM measurement |
+| Hall LED           | D7  | Status indicator for hall effect  |
+| Wind Sensor Output | A2  | Analog wind speed reading         |
+| Temperature Sensor | A3  | Analog temperature reading        |
+| Wind Low LED       | D6  | Wind speed warning indicator      |
+| Temp Low LED       | D5  | Temperature warning indicator     |
+| HX711 Data         | A0  | Load cell data line               |
+| HX711 Clock        | A1  | Load cell clock line              |
+| I2C Display (SDA)  | A4  | OLED display data                 |
+| I2C Display (SCL)  | A5  | OLED display clock                |
+| INA260 (SDA)       | A4  | Power monitor data (shared I2C)   |
+| INA260 (SCL)       | A5  | Power monitor clock (shared I2C)  |
 
 ### Project Structure
 
@@ -204,6 +209,7 @@ sd/
 ### Arduino/PlatformIO Issues
 
 **Upload fails - port not found:**
+
 ```bash
 # List available ports first
 pio device list
@@ -213,6 +219,7 @@ pio run --target upload --upload-port /dev/tty.usbmodem14201
 ```
 
 **Library installation errors:**
+
 ```bash
 # Force reinstall all libraries
 pio lib install --force
@@ -223,6 +230,7 @@ pio run
 ```
 
 **Permission denied on upload (macOS/Linux):**
+
 ```bash
 # Option 1: Run with sudo (not recommended)
 sudo pio run --target upload
@@ -233,6 +241,7 @@ sudo usermod -a -G dialout $USER
 ```
 
 **Wrong board detected:**
+
 - Check `platformio.ini` has correct board type
 - Default is `board = uno` - change if using Mega, Nano, etc.
 
@@ -284,6 +293,7 @@ For the best Arduino development experience, install the PlatformIO IDE extensio
    - 🗑️ Clean
 
 Or use Command Palette (Cmd+Shift+P):
+
 - "PlatformIO: Build"
 - "PlatformIO: Upload"
 - "PlatformIO: Serial Monitor"
