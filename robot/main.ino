@@ -9,7 +9,7 @@
 namespace {
 constexpr uint8_t HALL_PIN = 3;
 constexpr uint8_t HALL_LED_PIN = 7;
-constexpr unsigned long HALL_SAMPLE_MS = 2000;
+constexpr unsigned long HALL_SAMPLE_MS = 1000;
 
 constexpr uint8_t WIND_OUT_PIN = A2;
 constexpr uint8_t TEMP_PIN = A3;

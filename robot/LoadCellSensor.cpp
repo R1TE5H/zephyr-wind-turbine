@@ -26,7 +26,9 @@ bool LoadCellSensor::update(unsigned long now) {
   lastUpdate = now;
 
   const int32_t raw = hx711.readChannelBlocking(CHAN_A_GAIN_128) - 150;
-  forceValueN = static_cast<float>(raw) * nPerCount;
+  // Invert sensor sign so load is positive, then clamp at zero.
+  const float orientedForceN = -1.0f * static_cast<float>(raw) * nPerCount;
+  forceValueN = orientedForceN < 0.0f ? 0.0f : orientedForceN;
   torqueValueNm = forceValueN * armRadiusM;
 
   return true;

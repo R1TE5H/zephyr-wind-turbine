@@ -24,7 +24,9 @@ bool PowerMonitor::update(unsigned long now) {
   lastUpdate = now;
   busVoltageValueMv = ina260.readBusVoltage();
   currentValueMa = ina260.readCurrent();
-  powerValueMw = ina260.readPower();
+  // powerValueMw = ina260.readPower();
+  powerValueMw = (busVoltageValueMv * currentValueMa) / 1000.0f;
+
 
   return true;
 }
