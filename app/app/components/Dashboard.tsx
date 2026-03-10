@@ -36,6 +36,10 @@ interface MetricDefinition {
   unit: string;
   stroke: string;
   valueClassName: string;
+  fixedRange?: {
+    min: number;
+    max: number;
+  };
   read: (sample: SensorData) => number;
 }
 
@@ -64,6 +68,10 @@ const METRICS: MetricDefinition[] = [
     unit: "m/s",
     stroke: "#16a34a",
     valueClassName: "text-green-600 dark:text-green-400",
+    fixedRange: {
+      min: 0,
+      max: 15,
+    },
     read: (sample) => sample.wind.speed,
   },
   {
@@ -72,6 +80,10 @@ const METRICS: MetricDefinition[] = [
     unit: "degC",
     stroke: "#15803d",
     valueClassName: "text-green-700 dark:text-green-300",
+    fixedRange: {
+      min: 10,
+      max: 35,
+    },
     read: (sample) => sample.wind.temp,
   },
   {
@@ -122,12 +134,16 @@ function Sparkline({
   chartId,
   label,
   unit,
+  yMin,
+  yMax,
 }: {
   values: number[];
   stroke: string;
   chartId: string;
   label: string;
   unit: string;
+  yMin?: number;
+  yMax?: number;
 }) {
   if (values.length < 2) {
     return (
@@ -145,15 +161,18 @@ function Sparkline({
   const bottom = 24;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  const min = yMin ?? dataMin;
+  const max = yMax ?? dataMax;
   const mid = min + (max - min) / 2;
   const range = max - min || 1;
 
   const points = values
     .map((value, idx) => {
       const x = left + (idx / (values.length - 1)) * plotWidth;
-      const y = top + (1 - (value - min) / range) * plotHeight;
+      const clampedValue = value < min ? min : value > max ? max : value;
+      const y = top + (1 - (clampedValue - min) / range) * plotHeight;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
@@ -337,6 +356,8 @@ export default function Dashboard() {
       return {
         ...metric,
         values,
+        yMin: metric.fixedRange?.min,
+        yMax: metric.fixedRange?.max,
         latest,
         min,
         max,
@@ -722,6 +743,8 @@ export default function Dashboard() {
                   chartId={`trend-${series.key}`}
                   label={series.label}
                   unit={series.unit}
+                  yMin={series.yMin}
+                  yMax={series.yMax}
                 />
 
                 <div className="mt-2">

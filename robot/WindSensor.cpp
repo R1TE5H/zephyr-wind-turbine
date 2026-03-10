@@ -40,7 +40,7 @@ bool WindSensor::update(unsigned long now) {
   const float windVolts = static_cast<float>(windRaw) * adcScale;
   const float tempVolts = static_cast<float>(tempRaw) * adcScale;
 
-  tempC = (tempVolts - 0.390f) / 0.0195f;
+  tempC = (tempVolts - 0.390f) / 0.0199f;
 
   if (windVolts > ZERO_WIND_V) {
     const float tempFactor = 3.038517f * powf(tempC, 0.115157f);
@@ -57,8 +57,8 @@ bool WindSensor::update(unsigned long now) {
     windMph = 0.0f;
   }
 
-  windMs = windMph * 0.44704f;
-  windKmh = windMph * 1.60934f;
+  windMs = windMph * 0.44704f / 2.0f;  // Divide by 2 to reduce noise.
+  windKmh = windMph * 1.60934f / 2.0f;  // Divide by 2 to reduce noise.
   return true;
 }
 
