@@ -23,9 +23,25 @@ interface SensorData {
   };
 }
 
-interface Port {
-  path: string;
-  manufacturer?: string;
+interface BrowserSerialPort {
+  open: (options: { baudRate: number }) => Promise<void>;
+  close: () => Promise<void>;
+  readonly readable: ReadableStream<Uint8Array> | null;
+  readonly writable: WritableStream<Uint8Array> | null;
+  getInfo?: () => { usbVendorId?: number; usbProductId?: number };
+}
+
+interface BrowserSerialApi {
+  getPorts: () => Promise<BrowserSerialPort[]>;
+  requestPort: () => Promise<BrowserSerialPort>;
+  addEventListener?: (
+    type: "connect" | "disconnect",
+    listener: () => void,
+  ) => void;
+  removeEventListener?: (
+    type: "connect" | "disconnect",
+    listener: () => void,
+  ) => void;
 }
 
 const MAX_SAMPLES = 1200;
@@ -44,6 +60,29 @@ interface MetricDefinition {
 }
 
 type ChartExportFormat = "svg" | "png" | "jpg";
+
+function getBrowserSerialApi(): BrowserSerialApi | null {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+  return (
+    (navigator as Navigator & { serial?: BrowserSerialApi }).serial ?? null
+  );
+}
+
+function describeBrowserPort(port: BrowserSerialPort, index: number): string {
+  const info = port.getInfo?.();
+  const vendor = info?.usbVendorId;
+  const product = info?.usbProductId;
+
+  if (typeof vendor === "number" && typeof product === "number") {
+    return `Port ${index + 1} (VID:${vendor.toString(16).padStart(4, "0")} PID:${product
+      .toString(16)
+      .padStart(4, "0")})`;
+  }
+
+  return `Port ${index + 1}`;
+}
 
 const METRICS: MetricDefinition[] = [
   {
@@ -313,8 +352,9 @@ function Sparkline({
 }
 
 export default function Dashboard() {
-  const [ports, setPorts] = useState<Port[]>([]);
-  const [selectedPort, setSelectedPort] = useState<string>("");
+  const [browserPorts, setBrowserPorts] = useState<BrowserSerialPort[]>([]);
+  const [selectedBrowserPortIndex, setSelectedBrowserPortIndex] =
+    useState<number>(-1);
   const [isConnected, setIsConnected] = useState(false);
   const [sensorData, setSensorData] = useState<SensorData | null>(null);
   const [history, setHistory] = useState<SensorData[]>([]);
@@ -322,34 +362,130 @@ export default function Dashboard() {
   const [error, setError] = useState<string>("");
   const [chartExportFormat, setChartExportFormat] =
     useState<ChartExportFormat>("png");
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const serialPortRef = useRef<BrowserSerialPort | null>(null);
+  const serialReaderRef =
+    useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
-  // Fetch available ports
-  useEffect(() => {
-    fetch("/api/serial/ports")
-      .then((res) => res.json())
-      .then((data) => {
-        setPorts(data.ports || []);
-        if (data.ports?.length > 0) {
-          setSelectedPort(data.ports[0].path);
+  const isBrowserSerialSupported = useMemo(() => {
+    return getBrowserSerialApi() !== null;
+  }, []);
+
+  const syncSelectedPortIndex = (
+    nextPorts: BrowserSerialPort[],
+    preferLast = false,
+  ) => {
+    setSelectedBrowserPortIndex((previous: number) => {
+      if (nextPorts.length === 0) {
+        return -1;
+      }
+      if (preferLast) {
+        return nextPorts.length - 1;
+      }
+      if (previous < 0) {
+        return 0;
+      }
+      return Math.min(previous, nextPorts.length - 1);
+    });
+  };
+
+  const refreshGrantedPorts = async (preferLast = false) => {
+    const serial = getBrowserSerialApi();
+    if (!serial) {
+      return;
+    }
+
+    const grantedPorts = await serial.getPorts();
+    setBrowserPorts(grantedPorts);
+    syncSelectedPortIndex(grantedPorts, preferLast);
+  };
+
+  const requestBrowserPort = async () => {
+    try {
+      const serial = getBrowserSerialApi();
+      if (!serial) {
+        setError("Web Serial is not supported in this browser.");
+        return;
+      }
+
+      setError("");
+      await serial.requestPort();
+      await refreshGrantedPorts(true);
+      setStatus("Port selected");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Port selection was cancelled";
+      setError(message);
+    }
+  };
+
+  const handleIncomingLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    try {
+      const payload: SensorData = JSON.parse(trimmed);
+      setSensorData(payload);
+      setHistory((prev: SensorData[]) => {
+        const next = [...prev, payload];
+        if (next.length > MAX_SAMPLES) {
+          return next.slice(-MAX_SAMPLES);
         }
-      })
-      .catch((err) => {
-        console.error("Error fetching ports:", err);
-        setError("Failed to fetch serial ports");
+        return next;
       });
+    } catch {
+      console.log("Raw data:", trimmed);
+    }
+  };
+
+  useEffect(() => {
+    if (!isBrowserSerialSupported) {
+      setStatus("Web Serial not supported");
+      setError(
+        "This browser does not support Web Serial. Use Chrome, Edge, or another Chromium browser.",
+      );
+      return;
+    }
+
+    refreshGrantedPorts();
+  }, [isBrowserSerialSupported]);
+
+  useEffect(() => {
+    const serial = getBrowserSerialApi();
+    if (!serial?.addEventListener || !serial.removeEventListener) {
+      return;
+    }
+
+    const handlePortTopologyChange = () => {
+      refreshGrantedPorts();
+    };
+
+    serial.addEventListener("connect", handlePortTopologyChange);
+    serial.addEventListener("disconnect", handlePortTopologyChange);
+
+    return () => {
+      serial.removeEventListener?.("connect", handlePortTopologyChange);
+      serial.removeEventListener?.("disconnect", handlePortTopologyChange);
+    };
   }, []);
 
   useEffect(() => {
     return () => {
-      eventSourceRef.current?.close();
-      eventSourceRef.current = null;
+      serialReaderRef.current?.cancel();
+      serialReaderRef.current = null;
+      if (serialPortRef.current) {
+        serialPortRef.current.close().catch(() => {
+          // Ignore close errors during unmount.
+        });
+      }
+      serialPortRef.current = null;
     };
   }, []);
 
   const chartSeries = useMemo(() => {
     return METRICS.map((metric) => {
-      const values = history.map((sample) => metric.read(sample));
+      const values = history.map((sample: SensorData) => metric.read(sample));
       const latest = values[values.length - 1] ?? 0;
       const min = values.length ? Math.min(...values) : 0;
       const max = values.length ? Math.max(...values) : 0;
@@ -365,67 +501,91 @@ export default function Dashboard() {
     });
   }, [history]);
 
-  const disconnect = () => {
-    eventSourceRef.current?.close();
-    eventSourceRef.current = null;
+  const disconnect = async () => {
+    try {
+      if (serialReaderRef.current) {
+        await serialReaderRef.current.cancel();
+      }
+    } catch {
+      // Ignore reader cancellation errors.
+    } finally {
+      serialReaderRef.current = null;
+    }
+
+    try {
+      if (serialPortRef.current) {
+        await serialPortRef.current.close();
+      }
+    } catch {
+      // Ignore close errors if the port is already closed.
+    } finally {
+      serialPortRef.current = null;
+    }
+
     setIsConnected(false);
     setStatus("Disconnected");
   };
 
-  const connectToArduino = () => {
-    if (!selectedPort) {
-      setError("Please select a port");
+  const connectToArduino = async () => {
+    if (!isBrowserSerialSupported) {
+      setError("Web Serial is not supported in this browser.");
       return;
     }
 
-    eventSourceRef.current?.close();
+    if (
+      selectedBrowserPortIndex < 0 ||
+      !browserPorts[selectedBrowserPortIndex]
+    ) {
+      setError("Select a serial port first");
+      return;
+    }
 
+    const selectedPort = browserPorts[selectedBrowserPortIndex];
+
+    await disconnect();
     setIsConnected(true);
     setError("");
     setStatus("Connecting...");
 
-    const eventSource = new EventSource(
-      `/api/serial/stream?port=${encodeURIComponent(selectedPort)}`,
-    );
-    eventSourceRef.current = eventSource;
-
-    eventSource.onopen = () => {
+    try {
+      await selectedPort.open({ baudRate: 9600 });
+      serialPortRef.current = selectedPort;
       setStatus("Connected");
-    };
 
-    eventSource.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-
-        if (message.type === "connected") {
-          setStatus(`Connected to ${message.port}`);
-        } else if (message.type === "data") {
-          const payload: SensorData = message.payload;
-          setSensorData(payload);
-          setHistory((prev) => {
-            const next = [...prev, payload];
-            if (next.length > MAX_SAMPLES) {
-              return next.slice(-MAX_SAMPLES);
-            }
-            return next;
-          });
-        } else if (message.type === "error") {
-          setError(message.message);
-          setStatus("Error");
-        } else if (message.type === "raw") {
-          console.log("Raw data:", message.payload);
-        }
-      } catch (err) {
-        console.error("Error parsing message:", err);
+      const reader = selectedPort.readable?.getReader();
+      if (!reader) {
+        throw new Error("Selected port is not readable");
       }
-    };
 
-    eventSource.onerror = () => {
+      serialReaderRef.current = reader;
+      const decoder = new TextDecoder();
+      let buffered = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        if (!value) {
+          continue;
+        }
+
+        buffered += decoder.decode(value, { stream: true });
+        const lines = buffered.split(/\r?\n/);
+        buffered = lines.pop() ?? "";
+
+        for (const line of lines) {
+          handleIncomingLine(line);
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Connection failed";
+      setError(message);
+      setStatus("Connection failed");
       setIsConnected(false);
-      setStatus("Connection lost");
-      eventSource.close();
-      eventSourceRef.current = null;
-    };
+      await disconnect();
+    }
   };
 
   const clearHistory = () => {
@@ -560,7 +720,7 @@ export default function Dashboard() {
       "load_torque_nm",
     ];
 
-    const rows = history.map((sample) => [
+    const rows = history.map((sample: SensorData) => [
       new Date(sample.timestamp).toISOString(),
       sample.timestamp,
       sample.hall.revs,
@@ -576,7 +736,7 @@ export default function Dashboard() {
 
     const csvContent = [
       header.join(","),
-      ...rows.map((row) => row.join(",")),
+      ...rows.map((row: Array<string | number>) => row.join(",")),
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -605,24 +765,30 @@ export default function Dashboard() {
             Connection
           </h2>
 
+          <p className="text-sm mb-4 text-zinc-500 dark:text-zinc-400">
+            Uses your browser&apos;s Web Serial API so the hosted site can read
+            serial devices connected to your computer.
+          </p>
+
           <div className="flex gap-4 items-end">
             <div className="flex-1">
               <label className="block text-sm font-medium mb-2 text-zinc-700 dark:text-zinc-300">
                 Serial Port
               </label>
               <select
-                value={selectedPort}
-                onChange={(e) => setSelectedPort(e.target.value)}
+                value={selectedBrowserPortIndex}
+                onChange={(e: { target: { value: string } }) =>
+                  setSelectedBrowserPortIndex(Number(e.target.value))
+                }
                 disabled={isConnected}
                 className="w-full px-4 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white disabled:opacity-50"
               >
-                {ports.length === 0 ? (
-                  <option>No ports found</option>
+                {browserPorts.length === 0 ? (
+                  <option value={-1}>No authorized ports yet</option>
                 ) : (
-                  ports.map((port) => (
-                    <option key={port.path} value={port.path}>
-                      {port.path}{" "}
-                      {port.manufacturer ? `(${port.manufacturer})` : ""}
+                  browserPorts.map((port: BrowserSerialPort, index: number) => (
+                    <option key={`browser-port-${index}`} value={index}>
+                      {describeBrowserPort(port, index)}
                     </option>
                   ))
                 )}
@@ -630,8 +796,20 @@ export default function Dashboard() {
             </div>
 
             <button
+              onClick={requestBrowserPort}
+              disabled={isConnected || !isBrowserSerialSupported}
+              className="px-6 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-zinc-400 text-white font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
+            >
+              Select Port
+            </button>
+
+            <button
               onClick={connectToArduino}
-              disabled={isConnected || !selectedPort}
+              disabled={
+                isConnected ||
+                selectedBrowserPortIndex < 0 ||
+                !isBrowserSerialSupported
+              }
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-400 text-white font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
             >
               {isConnected ? "Connected" : "Connect"}
